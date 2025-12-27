@@ -7,6 +7,7 @@ from .visualize_segmentation import visualize_segmentation
 from .optimal_registration import optimal_brain_registration
 from .simple_registration import simple_brain_registration
 from .registration_evaluation import evaluate_registration
+from .keras_utils import load_keras_model_no_custom
 
 __all__ = [
     "MRIDataAugmenter",
@@ -20,4 +21,5 @@ __all__ = [
     "optimal_brain_registration",
     "simple_brain_registration",
     "evaluate_registration",
+    "load_keras_model_no_custom",
 ]

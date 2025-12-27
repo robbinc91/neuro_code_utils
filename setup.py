@@ -13,6 +13,7 @@ setup(
     entry_points={
         "console_scripts": [
             "neuro-batch-augment=src.batch_augment:_cli",
+            "neuro-reg-eval=src.registration_cli:main",
         ]
     },
 )

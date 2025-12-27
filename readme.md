@@ -115,6 +115,12 @@ batch_augment("input_folder", "output_folder", n_augment=5, recursive=True)
 - Computes mean and variance across spatial dimensions
 - Essential for style transfer and generative models
 
+#### `InstanceNormalization.h` / `InstanceNormalization.cpp`
+**LibTorch (C++) Implementation**
+- Header-first C++ implementation of `InstanceNormalization` for LibTorch/LibTorch projects.
+- Provides `InstanceNormalization` module (TORCH_MODULE) that mirrors the Python behavior.
+- Example usage: [src/examples/cpp_instancenorm_example.cpp](src/examples/cpp_instancenorm_example.cpp#L1)
+
 #### `InstanceNormalizationTF.py`
 **TensorFlow Implementation**
 - Trainable Instance Normalization with scale and offset parameters
@@ -168,6 +174,54 @@ from src.torch2onnx import export_model
 # Use converted model in Keras
 from src.onnx2keras import load_keras_model
 ```
+
+### Prediction Examples
+
+Python Keras example:
+```bash
+python src/examples/python_predict_keras.py --model /path/to/saved_keras_model --input_shape 1 224 224 3
+```
+
+Python PyTorch example (scripted model):
+```bash
+python src/examples/python_predict_torch.py --model /path/to/model.pt --input_shape 1 3 224 224
+```
+
+C++ examples are provided under `src/examples/`:
+- `cpp_predict_torch.cpp` — uses LibTorch to load a scripted .pt and run a dummy input.
+- `cpp_predict_keras.cpp` — illustrative TensorFlow C++ SavedModel loader example (adjust input/output tensor names for your model and ensure TF C++ is built and linked).
+
+Additional C++ utilities and examples
+- `src/examples/cpp_instancenorm_example.cpp` — demonstrates the `InstanceNormalization` LibTorch module; shows per-channel mean/variance before and after normalization.
+- `src/examples/py_custom_to_cpp.py` — converts simple Python single-expression functions to a generated C++ header (`custom_funcs.h`) for inclusion in C++ examples. See usage below.
+
+Custom Python -> C++ helper
+```bash
+python src/examples/py_custom_to_cpp.py my_customs.py --out custom_funcs.h
+# compile the LibTorch example with -DHAS_CUSTOM_FUNCS and include the generated header
+```
+
+InstanceNormalization C++ example build (example using g++):
+```bash
+# adjust /path/to/libtorch to your LibTorch installation
+g++ -std=c++14 -I/path/to/libtorch/include -I/path/to/libtorch/include/torch/csrc/api/include \
+  src/examples/cpp_instancenorm_example.cpp src/InstanceNormalization.cpp \
+  -L/path/to/libtorch/lib -ltorch -lc10 -o instancenorm_example \
+  -Wl,-rpath,/path/to/libtorch/lib
+./instancenorm_example
+```
+
+Optional custom-objects for C++ (limited)
+---------------------------------------
+You can provide simple Python `custom_objects` (single-argument functions that return a single expression) and convert them to a C++ header using the helper:
+
+```bash
+python src/examples/py_custom_to_cpp.py my_customs.py --out custom_funcs.h
+```
+
+The generated `custom_funcs.h` contains `extern "C"` functions (double->double) that can be compiled into the C++ example. Compile the LibTorch example with the header available and pass `-DHAS_CUSTOM_FUNCS` to enable applying the generated function to the input before inference. Limitations: only simple arithmetic and a small set of math functions (sin, cos, exp, log, tanh, abs) are supported by the converter.
+
+
 
 ### Data Augmentation
 ```python

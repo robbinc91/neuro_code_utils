@@ -18,6 +18,8 @@ from pathlib import Path
 import numpy as np
 import nibabel as nib
 from scipy import stats
+from scipy import ndimage
+import json
 
 
 def _otsu_threshold(data: np.ndarray, nbins: int = 256) -> float:
@@ -126,6 +128,9 @@ def evaluate_registration(
     mask_fixed_path: Optional[str] = None,
     mask_moving_path: Optional[str] = None,
     bins: int = 64,
+    deformation_field_path: Optional[str] = None,
+    landmarks_path: Optional[str] = None,
+    weights: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Any]:
     """Evaluate registration quality between a fixed image and a warped moving image.
 
@@ -184,9 +189,100 @@ def evaluate_registration(
         'histogram_intersection': hist_inter,
     }
 
-    final_score = float(np.mean(list(metrics.values())))
+    # include optional additional metrics
+    extra = {}
+    if deformation_field_path is not None:
+        try:
+            def_nii = nib.load(deformation_field_path)
+            def_data = def_nii.get_fdata()
+            jac_stats = _compute_jacobian_stats(def_data)
+            # map to 0..1: high score if folding fraction low and mean det ~1
+            folding = jac_stats.get('folding_fraction', 1.0)
+            mean_det = jac_stats.get('mean', 0.0)
+            jac_score = float(np.clip(np.exp(-abs(mean_det - 1.0)) * (1.0 - folding), 0.0, 1.0))
+            extra['jacobian'] = jac_score
+            metrics['jacobian'] = jac_score
+        except Exception:
+            extra['jacobian'] = None
+
+    if landmarks_path is not None:
+        try:
+            lp = np.load(landmarks_path)
+            fixed_lm = lp['fixed']
+            moving_lm = lp['moving']
+            tre_val = _compute_tre(fixed_lm, moving_lm)
+            # map tre to score (smaller better), assume mm units, sigma=5mm
+            tre_score = float(np.clip(np.exp(-tre_val / 5.0), 0.0, 1.0))
+            extra['tre'] = {'mm': float(tre_val), 'score': tre_score}
+            metrics['tre'] = tre_score
+        except Exception:
+            extra['tre'] = None
+
+    # If custom weights supplied, compute weighted average
+    if weights:
+        # normalize weights to sum 1 across present metrics
+        keys = [k for k in metrics.keys() if metrics[k] is not None]
+        wsum = sum(weights.get(k, 0.0) for k in keys)
+        if wsum <= 0:
+            final_score = float(np.mean(list(metrics.values())))
+        else:
+            final_score = float(sum(metrics[k] * weights.get(k, 0.0) for k in keys) / wsum)
+    else:
+        final_score = float(np.mean(list(metrics.values())))
 
     return {
         'metrics': metrics,
         'final_score': final_score,
+        'extra': extra,
     }
+
+
+def _compute_jacobian_stats(def_field: np.ndarray) -> Dict[str, float]:
+    """Compute basic statistics of Jacobian determinant from a displacement field.
+
+    def_field expected shape: (..., ndim) where last dim are vector components.
+    Returns mean, std, and folding fraction (fraction of voxels with det<=0).
+    """
+    if def_field.ndim < 4:
+        raise ValueError("deformation field must have last dimension equal to vector components")
+    # def_field: shape (Z,Y,X,3) or similar
+    comps = [def_field[..., i] for i in range(def_field.shape[-1])]
+    grads = []
+    for comp in comps:
+        g = np.stack(np.gradient(comp), axis=0)  # shape (ndim,...)
+        grads.append(g)
+
+    # Build Jacobian: I + grad(u)
+    # For each voxel, create a matrix I + du/dx
+    dims = def_field.shape[-1]
+    shape = def_field.shape[:-1]
+    dets = np.zeros(shape)
+    it = np.nditer(dets, flags=['multi_index'], op_flags=['writeonly'])
+    for idx, _ in np.ndenumerate(dets):
+        J = np.eye(dims)
+        for i in range(dims):
+            for j in range(dims):
+                # derivative of component i w.r.t axis j at voxel idx
+                J[i, j] += grads[i][j][idx]
+        dets[idx] = np.linalg.det(J)
+
+    mean = float(np.mean(dets))
+    std = float(np.std(dets))
+    folding_fraction = float(np.mean(dets <= 0.0))
+    return {'mean': mean, 'std': std, 'folding_fraction': folding_fraction}
+
+
+def _compute_tre(fixed_lm: np.ndarray, moving_lm: np.ndarray) -> float:
+    """Compute Target Registration Error (mean Euclidean distance) between paired landmarks.
+
+    `fixed_lm` and `moving_lm` are expected shape (N,3).
+    Returns mean distance in same units as the coordinates.
+    """
+    fixed_lm = np.asarray(fixed_lm)
+    moving_lm = np.asarray(moving_lm)
+    if fixed_lm.shape != moving_lm.shape:
+        raise ValueError("Landmark arrays must have the same shape")
+    if fixed_lm.ndim != 2 or fixed_lm.shape[1] != 3:
+        raise ValueError("Landmarks must be shape (N,3)")
+    dists = np.linalg.norm(fixed_lm - moving_lm, axis=1)
+    return float(np.mean(dists))
