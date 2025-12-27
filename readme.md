@@ -33,6 +33,19 @@ neuro_code_utils/
 - Rigid registration to template space using ANTs
 - Handles complete preprocessing workflow for MRI data
 
+#### `optimal_registration.py`
+**Optimal 3D Brain MRI Registration**
+- High-level 3-stage registration pipeline: Rigid -> Affine -> SyN (non-linear)
+- Optional N4 bias-field correction and skull-stripping (PyRobex)
+- Applies final transforms to the full MRI and saves warped output
+- Usage: `optimal_brain_registration(mri_path, template_path, output_dir, do_n4=True)`
+
+#### `simple_registration.py`
+**SimpleITK-based Registration (no ANTs / no PyRobex)**
+- Lightweight alternative using `SimpleITK` only
+- Optional N4 bias-field correction (SimpleITK), Otsu-based skull-stripping, and a 3-stage registration: Rigid -> Affine -> BSpline
+- Usage: `simple_brain_registration(mri_path, template_path, output_dir, do_n4=True)`
+
 #### `na_and_reg_better.py` 
 **Enhanced Registration Utilities**
 - Modular functions for MRI loading and N4 correction
@@ -46,6 +59,22 @@ neuro_code_utils/
 - Translation, rotation, and flipping augmentations
 - Configurable probability settings for each transformation
 - NIfTI file format support with nibabel integration
+
+#### `batch_augment.py`
+**Batch Augmentation CLI**
+- Batch-augment NIfTI files using `MRIDataAugmenter`.
+- Preserves original affine and header when saving augmented volumes.
+- Saves outputs as `<original>_aug<N>.nii.gz`.
+
+CLI example:
+```bash
+python src/batch_augment.py input_folder output_folder -n 5 -r
+```
+Programmatic usage:
+```python
+from src.batch_augment import batch_augment
+batch_augment("input_folder", "output_folder", n_augment=5, recursive=True)
+```
 
 ### 🔄 Model Conversion & Interoperability
 
@@ -67,6 +96,17 @@ neuro_code_utils/
 - Supports Conv2D, Linear, and BatchNorm layers
 - Handles parameter transposition between frameworks
 
+#### `keras2tfjs.py`
+**Keras -> TensorFlow.js Conversion**
+- Convert an in-memory `tf.keras.Model` or saved Keras model (`.h5` / SavedModel)
+- Uses the `tensorflowjs` Python API when available, or falls back to the `tensorflowjs_converter` CLI
+- Example: `convert_keras_model_to_tfjs(model_or_path, output_dir)`
+
+#### `torch_to_tfjs.py`
+**PyTorch -> TensorFlow.js Conversion (via ONNX)**
+- Exports a PyTorch model to ONNX, converts ONNX -> Keras with `onnx2keras`, then writes TFJS layers format using the Keras -> TFJS helper
+- Convenience function: `convert_torch_model_to_tfjs(torch_model, example_input, output_dir)`
+
 ### 🧩 Normalization Layers
 
 #### `InstanceNormalization.py`
@@ -80,6 +120,19 @@ neuro_code_utils/
 - Trainable Instance Normalization with scale and offset parameters
 - Integrated as Keras custom layer
 - Compatible with TF2.x and eager execution
+
+### 🧠 File utilities & Visualization
+
+#### `file_utils.py`
+**NIfTI helpers**
+- `list_nifti_files`, `load_nifti`, `save_nifti` helpers for common IO tasks
+
+#### `visualize_segmentation.py`
+**MRI + Segmentation Visualization**
+- Create PNG overlays of MRI slices with multi-label segmentation colorized
+- Iterate through axes (0,1,2) and save `n_slices` per axis with legends for label values
+- Example: `visualize_segmentation(mri_path, seg_path, out_dir, n_slices=8)`
+
 
 ## Installation & Dependencies
 
